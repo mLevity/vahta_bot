@@ -34,7 +34,6 @@ jobs:
           copy dist\start_bot\start_bot.exe release\
           copy config.json release\
           copy qa_data.json release\
-          copy README.txt release\
 
       - name: 6. Upload Release Artifact
         uses: actions/upload-artifact@v4
