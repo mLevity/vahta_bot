@@ -27,7 +27,7 @@ print("[INFO] Бот инициализирован.")
 
 user_steps = {}
 
-# --- Класс QASystem и функция normalize_text остаются БЕЗ ИЗМЕНЕНИЙ ---
+# --- Класс QASystem и функция normalize_text (без изменений) ---
 def normalize_text(text: str) -> str:
     return re.sub(r'[^\w\s]', '', text.lower())
 class QASystem:
@@ -52,43 +52,37 @@ class QASystem:
         if best_match_score >= self.threshold: return self.qa_data[best_match_idx]['answer']
         return None
 qa_system = QASystem(qa_data_path='qa_data.json', threshold=config["SIMILARITY_THRESHOLD"])
-# --- Конец неизменной части ---
 
-
+# --- Вспомогательные функции (без изменений) ---
 def is_admin(message: telebot.types.Message) -> bool:
     return message.from_user.id in ADMIN_IDS
-
-# --- Клавиатуры (без изменений) ---
 def cancel_markup():
     markup = InlineKeyboardMarkup(); markup.add(InlineKeyboardButton("Отмена", callback_data="cancel_add")); return markup
 def confirm_markup():
     markup = InlineKeyboardMarkup(); markup.row(InlineKeyboardButton("✅ Подтвердить", callback_data="confirm_add"), InlineKeyboardButton("❌ Отмена", callback_data="cancel_add")); return markup
 
-
 # --- Основные обработчики команд ---
 
 @bot.message_handler(commands=['start'])
 def send_welcome(message: telebot.types.Message):
-    # --- ИЗМЕНЕНИЕ: Эта команда работает в ЛЮБОМ чате ---
     welcome_text = "Здравствуйте! Я бот-помощник."
     if is_admin(message):
-        welcome_text += "\n\n*Вы администратор.* Вам доступна команда /add для добавления новых вопросов."
+        welcome_text += "\n\n*Вы администратор.*\nВам доступна команда `/add` в личном чате для добавления новых вопросов."
     welcome_text += "\n\nИспользуйте /help, чтобы увидеть список всех команд."
     bot.reply_to(message, welcome_text, parse_mode="Markdown")
 
 @bot.message_handler(commands=['help'])
 def send_help(message: telebot.types.Message):
-    # --- ИЗМЕНЕНИЕ: Эта команда тоже работает в ЛЮБОМ чате ---
     help_text = config["HELP_MESSAGE"]
     if is_admin(message):
-        help_text += "\n\n*Для администраторов:*\n`/add` - запустить добавление нового вопроса-ответа."
+        help_text += "\n\n*Для администраторов:*\n`/add` - запустить добавление нового вопроса-ответа (только в личном чате)."
     bot.reply_to(message, help_text, parse_mode="Markdown")
 
 @bot.message_handler(commands=['ask'])
 def handle_question(message: telebot.types.Message):
-    # --- ИЗМЕНЕНИЕ: Проверка на ID чата ПЕРЕНЕСЕНА ВНУТРЬ ---
+    # Эта команда работает только в разрешенном чате (если он указан)
     if ALLOWED_CHAT_ID != 0 and message.chat.id != ALLOWED_CHAT_ID:
-        bot.reply_to(message, "Эта команда работает только в назначенном рабочем чате.")
+        bot.reply_to(message, "Эта команда для вопросов работает только в назначенном рабочем чате.")
         print(f"[WARN] Попытка использовать /ask в неразрешенном чате: ID={message.chat.id}")
         return
     
@@ -100,22 +94,25 @@ def handle_question(message: telebot.types.Message):
         answer = qa_system.find_answer(question) or config["DEFAULT_ANSWER"]
     bot.reply_to(message, answer)
 
+# --- ИЗМЕНЕННАЯ ЛОГИКА ДОБАВЛЕНИЯ ---
+
 @bot.message_handler(commands=['add'])
 def handle_add(message: telebot.types.Message):
-    # --- ИЗМЕНЕНИЕ: Проверка на ID чата ПЕРЕНЕСЕНА ВНУТРЬ ---
-    if ALLOWED_CHAT_ID != 0 and message.chat.id != ALLOWED_CHAT_ID:
-        bot.reply_to(message, "Эта команда работает только в назначенном рабочем чате.")
-        print(f"[WARN] Попытка использовать /add в неразрешенном чате: ID={message.chat.id}")
-        return
+    """Шаг 1: Запуск процесса добавления. Проверяет, что это админ и что чат - личный."""
+    # --- НОВЫЕ ПРОВЕРКИ ---
     if not is_admin(message):
         bot.reply_to(message, "Эта команда доступна только администраторам.")
         return
+    if message.chat.type != "private":
+        bot.reply_to(message, "Добавлять новые вопросы можно только в личном чате с ботом.")
+        print(f"[WARN] Админ {message.from_user.username} попытался использовать /add в групповом чате.")
+        return
         
-    print(f"[CMD] Админ {message.from_user.username} инициировал добавление Q/A.")
+    print(f"[CMD] Админ {message.from_user.username} инициировал добавление Q/A в личном чате.")
     msg = bot.reply_to(message, "Хорошо. Теперь отправьте мне текст **вопроса**.", reply_markup=cancel_markup())
     bot.register_next_step_handler(msg, process_question_step)
 
-# --- Логика пошагового добавления (без изменений) ---
+# --- Логика пошагового диалога (остается без изменений) ---
 def process_question_step(message: telebot.types.Message):
     user_id = message.from_user.id; user_steps[user_id] = {'question': message.text}
     msg = bot.reply_to(message, "Отлично. Теперь отправьте мне текст **ответа**.", reply_markup=cancel_markup())
@@ -146,10 +143,10 @@ def callback_add_handler(call: telebot.types.CallbackQuery):
 
 @bot.message_handler(func=lambda message: True)
 def get_chat_id(message: telebot.types.Message):
-    """Ловит любое другое сообщение, чтобы сообщить нам ID чата."""
-    # --- ИЗМЕНЕНИЕ: Упрощаем, чтобы не спамил в консоль ---
-    if ALLOWED_CHAT_ID == 0:
-         print(f"[INFO] Получено сообщение из чата '{message.chat.title}' с ID: {message.chat.id}")
+    """Ловит любое другое сообщение, чтобы сообщить ID чата/пользователя."""
+    if ALLOWED_CHAT_ID == 0 or not ADMIN_IDS:
+         print(f"[INFO] Получено сообщение из чата '{message.chat.title or 'личный чат'}' (ID: {message.chat.id}) от пользователя '{message.from_user.username}' (ID: {message.from_user.id})")
+         print("[INFO] Скопируйте ID чата и/или пользователя и вставьте в config.json.")
 
 # --- Запуск бота ---
 if __name__ == '__main__':
