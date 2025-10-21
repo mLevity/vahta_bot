@@ -1,0 +1,95 @@
+# .github/workflows/build.yml
+
+name: Build Telegram Bot Executable
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+
+    steps:
+      - name: 1. Checkout repository code
+        uses: actions/checkout@v4
+
+      - name: 2. Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: 3. Install Python dependencies
+        run: pip install -r requirements.txt && pip install pyinstaller
+
+      - name: 4. Build Windows Executable via .spec file
+        run: pyinstaller main.spec
+      
+      - name: 5. Prepare Release Package
+        run: |
+          mkdir release
+          copy dist\start_bot\start_bot.exe release\
+          copy config.json release\
+          copy qa_data.json release\
+          copy README.txt release\
+
+      - name: 6. Upload Release Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: telegram-bot-windows
+          path: release/```
+
+---
+
+### 2. Файл `main.spec` (Рецепт сборки для `telegram_bot.py`)
+
+```python
+# main.spec
+
+a = Analysis(
+    ['telegram_bot.py'],  # Указываем главный файл для сборки
+    pathex=[],
+    binaries=[],
+    datas=[],
+    hiddenimports=[
+        'sklearn.utils._cython_blas',
+        'sklearn.neighbors._typedefs',
+        'sklearn.neighbors._quad_tree',
+        'sklearn.tree._utils'
+    ],
+    hookspath=[],
+    runtime_hooks=[],
+    excludes=[],
+    cipher=None
+)
+pyz = PYZ(a.pure)
+exe = EXE(
+    pyz,
+    a.scripts,
+    [],
+    exclude_binaries=True,
+    name='start_bot',
+    debug=False,
+    bootloader_ignore_signals=False,
+    strip=False,
+    upx=True,
+    console=True,
+    disable_windowed_traceback=False,
+    argv_emulation=False,
+    target_arch=None,
+    codesign_identity=None,
+    entitlements_file=None,
+)
+coll = COLLECT(
+    exe,
+    a.binaries,
+    a.zipfiles,
+    a.datas,
+    strip=False,
+    upx=True,
+    upx_exclude=[],
+    name='start_bot'
+)
